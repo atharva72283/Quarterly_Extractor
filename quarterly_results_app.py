@@ -25,7 +25,7 @@ import fitz  # PyMuPDF
 GITHUB_OWNER      = "atharva72283"
 GITHUB_REPO       = "Quarterly_Extractor"
 GITHUB_BRANCH     = "main"
-GITHUB_TOKEN      = "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"
+GITHUB_TOKEN      = os.getenv("MY_TOKEN")
 GITHUB_API_BASE   = "https://api.github.com"
 GITHUB_RAW_BASE   = "https://raw.githubusercontent.com"
 
