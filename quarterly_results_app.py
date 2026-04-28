@@ -30,7 +30,7 @@ GITHUB_API_BASE   = "https://api.github.com"
 GITHUB_RAW_BASE   = "https://raw.githubusercontent.com"
 
 LEFT_LOGO_PATH    = "Q4.png"        # left  header image in repo
-RIGHT_LOGO_PATH   = "JM Logo.png"   # right header image in repo
+RIGHT_LOGO_PATH   = "JM_Logo.png"   # right header image in repo
 LOG_FILE_PATH     = "results_log.json"
 
 GITHUB_HEADERS = {
@@ -151,7 +151,7 @@ st.markdown("""
 <div class="jm-header">
     <div>
         <h1>📊 Quarterly Results Extractor</h1>
-        <p>JM Financial · AI-Powered PDF → Excel &amp; Word Automation · Powered by Mistral AI</p>
+        <p>JM Financial · Quarterly Result Extractor · AI Integrated</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
