@@ -190,7 +190,7 @@ with st.sidebar:
         "Mistral API Key",
         type="password",
         placeholder="Enter your Mistral API key...",
-        help="Your Mistral API key from console.mistral.ai"
+        help="Your Mistral API key"
     )
 
     st.markdown("---")
@@ -217,7 +217,7 @@ with st.sidebar:
     right_logo_file = st.file_uploader("Right logo (JM Logo.png)", type=["png","jpg","jpeg"], key="right_logo")
 
     st.markdown("---")
-    st.caption("v3.0 · JM Financial Internal Tool · Mistral AI")
+    st.caption("v3.0 · JM Financial Internal Tool · AI Integated")
 
 # ─────────────────────────────────────────
 # Session-state init
