@@ -6,7 +6,6 @@ import re
 import os
 import json
 import base64
-import tempfile
 import requests
 import matplotlib
 matplotlib.use('Agg')
@@ -35,13 +34,12 @@ st.set_page_config(
 GITHUB_OWNER      = "atharva72283"
 GITHUB_REPO       = "Quarterly_Extractor"
 GITHUB_BRANCH     = "main"  
-
-LEFT_LOGO_PATH    = "Q4.png"        
-RIGHT_LOGO_PATH   = "JM_Logo.png"   
 LOG_FILE_PATH     = "results_log.json"
-
 GITHUB_API_BASE   = "https://api.github.com"
-GITHUB_RAW_BASE   = "https://raw.githubusercontent.com"
+
+# Unbreakable Permalinks for Logos
+LEFT_LOGO_URL  = "https://raw.githubusercontent.com/atharva72283/Quarterly_Extractor/85cfb3d5dd0728cbe343054c5c2be8b4941a3d9a/Q4.png"
+RIGHT_LOGO_URL = "https://raw.githubusercontent.com/atharva72283/Quarterly_Extractor/85cfb3d5dd0728cbe343054c5c2be8b4941a3d9a/JM_Logo.png"
 
 def get_github_headers():
     """Safely fetch the token from Streamlit Secrets."""
@@ -52,7 +50,6 @@ def get_github_headers():
             "Accept": "application/vnd.github.v3+json",
         }
     except Exception:
-        # Fallback if secret isn't set
         return {"Accept": "application/vnd.github.v3+json"}
 
 # ─────────────────────────────────────────
@@ -167,24 +164,19 @@ st.markdown("""
 # ─────────────────────────────────────────
 # GitHub helpers
 # ─────────────────────────────────────────
-def fetch_github_image(file_path: str) -> bytes | None:
-    """Fetch a raw image from the GitHub repo. Cache removed to avoid stuck errors."""
-    safe_path = file_path.replace(" ", "%20")
-    url = f"{GITHUB_RAW_BASE}/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{safe_path}"
-    
+def fetch_logo_direct(url: str) -> bytes | None:
     try:
         resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             return resp.content
         else:
-            st.sidebar.error(f"GitHub Error {resp.status_code}: Could not fetch {file_path}")
+            st.sidebar.error(f"Logo Fetch Error {resp.status_code}")
     except Exception as e:
         st.sidebar.error(f"Connection error: {e}")
     return None
 
 @st.cache_data(show_spinner=False)
 def fetch_results_log() -> list:
-    """Read results_log.json from the repo. Returns [] if not found."""
     url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     try:
         resp = requests.get(url, headers=get_github_headers(), timeout=15)
@@ -197,7 +189,6 @@ def fetch_results_log() -> list:
     return []
 
 def push_results_log(log_entries: list) -> bool:
-    """Commit the updated results_log.json back to the repo."""
     url     = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     content = base64.b64encode(
         json.dumps(log_entries, indent=2, ensure_ascii=False).encode("utf-8")
@@ -227,10 +218,10 @@ def push_results_log(log_entries: list) -> bool:
         return False
 
 # ─────────────────────────────────────────
-# Pre-load images from GitHub 
+# Pre-load images from GitHub (Permalinks)
 # ─────────────────────────────────────────
-left_logo_bytes  = fetch_github_image(LEFT_LOGO_PATH)   
-right_logo_bytes = fetch_github_image(RIGHT_LOGO_PATH)  
+left_logo_bytes  = fetch_logo_direct(LEFT_LOGO_URL)   
+right_logo_bytes = fetch_logo_direct(RIGHT_LOGO_URL)  
 
 # ─────────────────────────────────────────
 # Sidebar – Credentials, Settings & DB
@@ -271,7 +262,6 @@ with st.sidebar:
             f"<small style='color:#aaa'>{len(log_entries)} entr{'y' if len(log_entries)==1 else 'ies'} recorded</small>",
             unsafe_allow_html=True
         )
-        # Build HTML table for database preview
         rows_html = ""
         for entry in reversed(log_entries[-20:]):   
             sentiment = entry.get("sentiment", "").lower()
@@ -312,7 +302,7 @@ with st.sidebar:
         else:                st.markdown("❌ JM Logo.png")
 
     st.markdown("---")
-    st.caption("v3.2 · JM Financial Internal Tool · Mistral AI")
+    st.caption("v3.3 · JM Financial Internal Tool · Mistral AI")
 
 # ─────────────────────────────────────────
 # Session-state init
@@ -330,7 +320,6 @@ COLS_NUMERIC         = ['Q4FY2026', 'Q3FY2026', 'Q4FY2025', 'FY2026', 'FY2025']
 MISTRAL_VISION_MODEL = "pixtral-12b-2409"
 MISTRAL_TEXT_MODEL   = "mistral-large-latest"
 MISTRAL_API_BASE     = "https://api.mistral.ai/v1"
-
 
 # ─────────────────────────────────────────
 # Core helpers
@@ -858,7 +847,6 @@ if extract_btn:
                 st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub (Check Token).</div>',
                             unsafe_allow_html=True)
             
-            # Clears the DB cache so the sidebar updates instantly, but ignores the image fetcher since we removed its cache.
             fetch_results_log.clear()
 
 # ─────────────────────────────────────────
