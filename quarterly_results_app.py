@@ -341,7 +341,7 @@ def extract_pdf_page_as_image(pdf_bytes: bytes, page_idx: int) -> Image.Image:
         st.stop()
     page = doc[page_idx]
     pix = page.get_pixmap(dpi=200)
-    # FIX APPLIED: Export to PNG bytes to handle any transparency/channels properly
+    # Convert to PNG natively to avoid RGBA/RGB transparency crash
     img_bytes = pix.tobytes("png")
     return Image.open(io.BytesIO(img_bytes))
 
@@ -386,7 +386,7 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
         "messages": [{
             "role": "user",
             "content": [
-                # FIX APPLIED: Pixtral/OpenAI compatible format
+                # Pixtral/OpenAI compatible format
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pil_to_b64(img)}"}},
                 {"type": "text",      "text": prompt}
             ]
@@ -664,16 +664,12 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
     lp = htbl.cell(0, 0).paragraphs[0]
     lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
     if left_img:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-            tf.write(left_img); tf.flush()
-            lp.add_run().add_picture(tf.name, width=Inches(2.5))
+        lp.add_run().add_picture(io.BytesIO(left_img), width=Inches(2.5))
 
     rp = htbl.cell(0, 1).paragraphs[0]
     rp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     if right_img:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-            tf.write(right_img); tf.flush()
-            rp.add_run().add_picture(tf.name, width=Inches(1.5))
+        rp.add_run().add_picture(io.BytesIO(right_img), width=Inches(1.5))
 
     # ── Page border ──────────────────────────────────────────────────
     sectPr    = section._sectPr
@@ -693,9 +689,7 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
     doc.add_paragraph()
 
     # ── Table image ──────────────────────────────────────────────────
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-        tf.write(table_png); tf.flush()
-        doc.add_picture(tf.name, width=Inches(7.5))
+    doc.add_picture(io.BytesIO(table_png), width=Inches(7.5))
 
     # ── AI Risk Analyst Summary ──────────────────────
     if ai_summary and ai_summary.strip():
@@ -900,7 +894,6 @@ if st.session_state.df_extracted is not None:
         eb_row  = get_row(edited_df, "EBITDA")
         rev_row = get_row(edited_df, "Revenue from Operations")
         
-        # FIX APPLIED: Zero Division Handlers
         rev_val = rev_row.get("Q4FY2026", 0)
         eb_mg   = (eb_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
         pt_mg   = (pat_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
