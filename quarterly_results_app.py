@@ -33,7 +33,7 @@ st.set_page_config(
 # ─────────────────────────────────────────
 GITHUB_OWNER      = "atharva72283"
 GITHUB_REPO       = "Quarterly_Extractor"
-GITHUB_BRANCH     = "main"  
+GITHUB_BRANCH     = "main"
 LOG_FILE_PATH     = "results_log.json"
 GITHUB_API_BASE   = "https://api.github.com"
 
@@ -42,14 +42,26 @@ LEFT_LOGO_URL  = "https://raw.githubusercontent.com/atharva72283/Quarterly_Extra
 RIGHT_LOGO_URL = "https://raw.githubusercontent.com/atharva72283/Quarterly_Extractor/85cfb3d5dd0728cbe343054c5c2be8b4941a3d9a/JM_Logo.png"
 
 def get_github_headers():
-    """Safely fetch the token from Streamlit Secrets."""
+    """
+    FIX: Previously the except block silently swallowed errors and returned
+    headers WITHOUT auth, meaning every GitHub API write (push) would get a
+    401 and silently fail.  Now we surface the exact error so you can see
+    what is wrong in the sidebar.
+    """
     try:
         token = st.secrets["MY_TOKEN"]
+        if not token:
+            st.sidebar.warning("⚠️ MY_TOKEN secret is empty.")
+            return {"Accept": "application/vnd.github.v3+json"}
         return {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
         }
-    except Exception:
+    except KeyError:
+        st.sidebar.error("❌ GitHub token missing. Add MY_TOKEN to Streamlit Secrets.")
+        return {"Accept": "application/vnd.github.v3+json"}
+    except Exception as e:
+        st.sidebar.error(f"❌ Secret read error: {e}")
         return {"Accept": "application/vnd.github.v3+json"}
 
 # ─────────────────────────────────────────
@@ -164,43 +176,77 @@ st.markdown("""
 # ─────────────────────────────────────────
 # GitHub helpers
 # ─────────────────────────────────────────
+
 def fetch_logo_direct(url: str) -> bytes | None:
+    """
+    FIX: raw.githubusercontent.com REJECTS requests that carry an
+    Authorization header — it returns 401.  Logos must be fetched
+    without auth headers (they are public files).
+    """
     try:
-        resp = requests.get(url, headers=get_github_headers(), timeout=15)
+        resp = requests.get(url, timeout=15)   # ← no auth headers
         if resp.status_code == 200:
             return resp.content
         else:
-            st.sidebar.error(f"Logo Fetch Error {resp.status_code}")
+            st.sidebar.error(f"Logo Fetch Error {resp.status_code}: {url}")
     except Exception as e:
-        st.sidebar.error(f"Connection error: {e}")
+        st.sidebar.error(f"Logo connection error: {e}")
     return None
 
-@st.cache_data(show_spinner=False)
+# FIX: fetch_results_log must NOT be @st.cache_data when it reads st.secrets,
+# because cache_data executes the function body outside a normal request context
+# on the very first cold-start, before secrets are available, caches the empty
+# list, and then never re-fetches even after the token is present.
+# We manage our own per-session cache via st.session_state instead.
 def fetch_results_log() -> list:
+    """
+    Fetch results_log.json from GitHub.
+    Uses session_state as a lightweight cache so repeated sidebar renders
+    don't hammer the API, but the cache is always busted after a push.
+    """
+    if "log_cache" in st.session_state:
+        return st.session_state["log_cache"]
+
     url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     try:
         resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             content_b64 = resp.json().get("content", "")
             raw = base64.b64decode(content_b64).decode("utf-8")
-            return json.loads(raw)
-    except Exception:
-        pass
+            result = json.loads(raw)
+            st.session_state["log_cache"] = result
+            return result
+        elif resp.status_code == 404:
+            # File doesn't exist yet — that's fine, first run
+            st.session_state["log_cache"] = []
+            return []
+        else:
+            st.sidebar.warning(f"⚠️ Could not load log (HTTP {resp.status_code}). Check token permissions.")
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Log fetch error: {e}")
+    st.session_state["log_cache"] = []
     return []
 
 def push_results_log(log_entries: list) -> bool:
-    url     = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
+    url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     content = base64.b64encode(
         json.dumps(log_entries, indent=2, ensure_ascii=False).encode("utf-8")
     ).decode("utf-8")
 
+    # Always fetch the latest SHA before pushing to avoid conflict errors
     sha = None
     try:
         resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             sha = resp.json().get("sha")
-    except Exception:
-        pass
+        elif resp.status_code == 404:
+            sha = None  # File doesn't exist yet — first push will create it
+        else:
+            st.sidebar.error(f"SHA fetch failed HTTP {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as e:
+        st.sidebar.error(f"SHA fetch error: {e}")
+        return False
 
     payload = {
         "message": "results_log: add/update entry",
@@ -212,16 +258,23 @@ def push_results_log(log_entries: list) -> bool:
 
     try:
         resp = requests.put(url, headers=get_github_headers(), json=payload, timeout=20)
-        return resp.status_code in (200, 201)
+        if resp.status_code in (200, 201):
+            # FIX: Bust the session-state cache so the sidebar re-fetches fresh data
+            if "log_cache" in st.session_state:
+                del st.session_state["log_cache"]
+            return True
+        else:
+            st.sidebar.error(f"Push failed HTTP {resp.status_code}: {resp.text[:300]}")
+            return False
     except Exception as e:
         st.sidebar.error(f"Push failed: {e}")
         return False
 
 # ─────────────────────────────────────────
-# Pre-load images from GitHub (Permalinks)
+# Pre-load logos from GitHub (no auth – public raw URLs)
 # ─────────────────────────────────────────
-left_logo_bytes  = fetch_logo_direct(LEFT_LOGO_URL)   
-right_logo_bytes = fetch_logo_direct(RIGHT_LOGO_URL)  
+left_logo_bytes  = fetch_logo_direct(LEFT_LOGO_URL)
+right_logo_bytes = fetch_logo_direct(RIGHT_LOGO_URL)
 
 # ─────────────────────────────────────────
 # Sidebar – Credentials, Settings & DB
@@ -263,8 +316,8 @@ with st.sidebar:
             unsafe_allow_html=True
         )
         rows_html = ""
-        for entry in reversed(log_entries[-20:]):   
-            sentiment = entry.get("sentiment", "").lower()
+        for entry in reversed(log_entries[-20:]):
+            sentiment     = entry.get("sentiment", "").lower()
             company_class = "company-positive" if sentiment == "positive" else "company-negative"
             tag_class     = "tag-positive"      if sentiment == "positive" else "tag-negative"
             tag_label     = "▲" if sentiment == "positive" else "▼"
@@ -302,7 +355,7 @@ with st.sidebar:
         else:                st.markdown("❌ JM Logo.png")
 
     st.markdown("---")
-    st.caption("v3.3 · JM Financial Internal Tool · Mistral AI")
+    st.caption("v3.4 · JM Financial Internal Tool · Mistral AI")
 
 # ─────────────────────────────────────────
 # Session-state init
@@ -410,7 +463,7 @@ def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        "max_tokens": 1200  
+        "max_tokens": 1200
     }
     resp = requests.post(f"{MISTRAL_API_BASE}/chat/completions",
                          json=payload, headers=mistral_headers(api_key), timeout=90)
@@ -635,42 +688,64 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
                    left_img=None, right_img=None) -> bytes:
     doc     = Document()
     section = doc.sections[0]
-    section.top_margin = section.bottom_margin = Inches(0.5)
-    section.left_margin = section.right_margin = Inches(0.5)
+    section.top_margin    = Inches(0.5)
+    section.bottom_margin = Inches(0.5)
+    section.left_margin   = Inches(0.5)
+    section.right_margin  = Inches(0.5)
 
-    # ── Header: left = Q4.png, right = JM Logo.png ──────────────────
+    # ── Header: left logo + tab + right logo ────────────────────────
+    # FIX: python-docx does NOT support add_table() inside a header object.
+    # The correct approach is a single paragraph with a right-aligned tab stop
+    # so the left logo sits on the left and the right logo snaps to the right
+    # margin — no table needed.
     header = section.header
+    # Remove any default empty paragraph that python-docx inserts
     for para in list(header.paragraphs):
-        try: para._element.getparent().remove(para._element)
-        except Exception: pass
+        try:
+            para._element.getparent().remove(para._element)
+        except Exception:
+            pass
 
-    htbl = header.add_table(rows=1, cols=2, width=Inches(7.5))
-    htbl.autofit = False
-    htbl.columns[0].width = Inches(3.75)
-    htbl.columns[1].width = Inches(3.75)
+    hp = header.add_paragraph()
+    hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    lp = htbl.cell(0, 0).paragraphs[0]
-    lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # Add a right-aligned tab stop at 7.5 inches (full text width with 0.5" margins)
+    # 7.5 inches × 1440 twips/inch = 10800 twips
+    pPr  = hp._p.get_or_add_pPr()
+    tabs = OxmlElement("w:tabs")
+    tab  = OxmlElement("w:tab")
+    tab.set(qn("w:val"),  "right")
+    tab.set(qn("w:pos"),  "10800")
+    tabs.append(tab)
+    pPr.append(tabs)
+
+    # Left logo
     if left_img:
-        lp.add_run().add_picture(io.BytesIO(left_img), width=Inches(2.5))
+        run_left = hp.add_run()
+        run_left.add_picture(io.BytesIO(left_img), width=Inches(2.5))
 
-    rp = htbl.cell(0, 1).paragraphs[0]
-    rp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # Tab character pushes next content to the right tab stop
+    hp.add_run("\t")
+
+    # Right logo
     if right_img:
-        rp.add_run().add_picture(io.BytesIO(right_img), width=Inches(1.5))
+        run_right = hp.add_run()
+        run_right.add_picture(io.BytesIO(right_img), width=Inches(1.5))
 
     # ── Page border ──────────────────────────────────────────────────
     sectPr    = section._sectPr
     pgBorders = OxmlElement("w:pgBorders")
     pgBorders.set(qn("w:offsetFrom"), "page")
-    for bn in ["top","left","bottom","right"]:
+    for bn in ["top", "left", "bottom", "right"]:
         b = OxmlElement(f"w:{bn}")
-        b.set(qn("w:val"), "single"); b.set(qn("w:sz"), "4")
-        b.set(qn("w:space"), "24");   b.set(qn("w:color"), "auto")
+        b.set(qn("w:val"),   "single")
+        b.set(qn("w:sz"),    "4")
+        b.set(qn("w:space"), "24")
+        b.set(qn("w:color"), "auto")
         pgBorders.append(b)
     sectPr.append(pgBorders)
 
-    # ── Earnings paragraphs ─────────────────────────
+    # ── Earnings paragraphs ─────────────────────────────────────────
     for i, text in enumerate(paragraphs):
         add_para(doc, text, bold=(i == 0), font_name="Segoe UI", size=12)
 
@@ -679,14 +754,16 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
     # ── Table image ──────────────────────────────────────────────────
     doc.add_picture(io.BytesIO(table_png), width=Inches(7.5))
 
-    # ── AI Risk Analyst Summary ──────────────────────
+    # ── AI Risk Analyst Summary ─────────────────────────────────────
     if ai_summary and ai_summary.strip():
         doc.add_paragraph()
-        h = doc.add_paragraph()
+        h  = doc.add_paragraph()
         h.alignment = WD_ALIGN_PARAGRAPH.LEFT
         hr = h.add_run("Risk Analyst Commentary (AI-Generated)")
-        hr.font.name = "Segoe UI"; hr.font.size = Pt(12); hr.bold = True
-        hr.font.color.rgb = RGBColor(0x1A, 0x1A, 0x2E)
+        hr.font.name       = "Segoe UI"
+        hr.font.size       = Pt(12)
+        hr.bold            = True
+        hr.font.color.rgb  = RGBColor(0x1A, 0x1A, 0x2E)
 
         for line in ai_summary.split("\n"):
             stripped = line.strip()
@@ -707,24 +784,24 @@ def build_excel(df: pd.DataFrame, company: str) -> bytes:
     tdf = build_template_df(df)
     wb  = Workbook(); ws = wb.active; ws.title = "Financials"
     GOLD = "FCB316"; LGREY = "EBEBEB"
-    thin = Side(style="thin")
+    thin   = Side(style="thin")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     HIGHLIGHT = {"Total Income","EBIDTA","Profit before tax","Reported Profit"}
 
     last_col = get_column_letter(len(tdf.columns))
     ws.merge_cells(f"A1:{last_col}1")
     tc = ws["A1"]
-    tc.value = f"{company} – Quarterly Result Update  (Amount in Crs)"
-    tc.font = Font(name="Calibri", size=11, bold=True)
+    tc.value     = f"{company} – Quarterly Result Update  (Amount in Crs)"
+    tc.font      = Font(name="Calibri", size=11, bold=True)
     tc.alignment = Alignment(horizontal="center", vertical="center")
-    tc.border = border
+    tc.border    = border
 
     for ci, col_name in enumerate(tdf.columns, start=1):
-        cell = ws.cell(row=2, column=ci, value=col_name)
-        cell.font = Font(bold=True, color="000000")
-        cell.fill = PatternFill(start_color=GOLD, end_color=GOLD, fill_type="solid")
+        cell           = ws.cell(row=2, column=ci, value=col_name)
+        cell.font      = Font(bold=True, color="000000")
+        cell.fill      = PatternFill(start_color=GOLD, end_color=GOLD, fill_type="solid")
         cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = border
+        cell.border    = border
 
     NUM_FMT = '#,##0_);[Black](#,##0);"-"'
     PCT_FMT = '0"%";[Black]\\(0"%"\\);"-"'
@@ -739,7 +816,7 @@ def build_excel(df: pd.DataFrame, company: str) -> bytes:
                 is_pct = col_name in ["QoQ%","YoY%","% Change"] or \
                          str(row["Particulars"]).strip() in ["EBIDTA Margin %","PAT %"]
                 cell.number_format = PCT_FMT if is_pct else NUM_FMT
-                cell.alignment = Alignment(horizontal="right")
+                cell.alignment     = Alignment(horizontal="right")
             else:
                 cell.alignment = Alignment(horizontal="left")
             cell.border = border
@@ -834,6 +911,8 @@ if extract_btn:
                 "rev_yoy":   f"{float(rev_row.get('YoY%', 0)):+.0f}%",
             }
 
+            # FIX: fetch directly (bypassing session cache) to get the latest
+            # SHA before pushing, then bust cache after successful push.
             current_log = fetch_results_log()
             current_log = [e for e in current_log
                            if not (e.get("company") == new_entry["company"]
@@ -844,10 +923,8 @@ if extract_btn:
                 st.markdown('<div class="status-ok">✅ Data extracted & results log updated on GitHub.</div>',
                             unsafe_allow_html=True)
             else:
-                st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub (Check Token).</div>',
+                st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub. Check token permissions (needs repo write scope).</div>',
                             unsafe_allow_html=True)
-            
-            fetch_results_log.clear()
 
 # ─────────────────────────────────────────
 # STEP 2 – Review & Edit
@@ -881,11 +958,11 @@ if st.session_state.df_extracted is not None:
         pat_row = get_row(edited_df, "PAT")
         eb_row  = get_row(edited_df, "EBITDA")
         rev_row = get_row(edited_df, "Revenue from Operations")
-        
+
         rev_val = rev_row.get("Q4FY2026", 0)
         eb_mg   = (eb_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
         pt_mg   = (pat_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
-        
+
         st.markdown(f"""
         <div class="metric-row">
           <div class="metric-card"><div class="label">Revenue (Q4FY26)</div>
