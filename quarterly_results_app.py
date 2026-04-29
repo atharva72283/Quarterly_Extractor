@@ -20,25 +20,6 @@ from docx.oxml.ns import qn
 import fitz  # PyMuPDF
 
 # ─────────────────────────────────────────
-# GitHub Config  (hardcoded – public repo)
-# ─────────────────────────────────────────
-GITHUB_OWNER      = "atharva72283"
-GITHUB_REPO       = "Quarterly_Extractor"
-GITHUB_BRANCH     = "main"
-GITHUB_TOKEN      = os.getenv("MY_TOKEN")
-GITHUB_API_BASE   = "https://api.github.com"
-GITHUB_RAW_BASE   = "https://raw.githubusercontent.com"
-
-LEFT_LOGO_PATH    = "Q4.png"        # left  header image in repo
-RIGHT_LOGO_PATH   = "JM_Logo.png"   # right header image in repo
-LOG_FILE_PATH     = "results_log.json"
-
-GITHUB_HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3+json",
-}
-
-# ─────────────────────────────────────────
 # Page Config
 # ─────────────────────────────────────────
 st.set_page_config(
@@ -47,6 +28,32 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ─────────────────────────────────────────
+# GitHub Config & Headers
+# ─────────────────────────────────────────
+GITHUB_OWNER      = "atharva72283"
+GITHUB_REPO       = "Quarterly_Extractor"
+GITHUB_BRANCH     = "main"  
+
+LEFT_LOGO_PATH    = "Q4.png"        
+RIGHT_LOGO_PATH   = "JM_Logo.png"   
+LOG_FILE_PATH     = "results_log.json"
+
+GITHUB_API_BASE   = "https://api.github.com"
+GITHUB_RAW_BASE   = "https://raw.githubusercontent.com"
+
+def get_github_headers():
+    """Safely fetch the token from Streamlit Secrets."""
+    try:
+        token = st.secrets["MY_TOKEN"]
+        return {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+    except Exception:
+        # Fallback if secret isn't set
+        return {"Accept": "application/vnd.github.v3+json"}
 
 # ─────────────────────────────────────────
 # Custom CSS  – JM Financial Gold Theme
@@ -160,19 +167,19 @@ st.markdown("""
 # ─────────────────────────────────────────
 # GitHub helpers
 # ─────────────────────────────────────────
-@st.cache_data(show_spinner=False)
 def fetch_github_image(file_path: str) -> bytes | None:
-    """Fetch a raw image from the GitHub repo. Cached so it only downloads once."""
-    url = f"{GITHUB_RAW_BASE}/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{file_path}"
+    """Fetch a raw image from the GitHub repo. Cache removed to avoid stuck errors."""
+    safe_path = file_path.replace(" ", "%20")
+    url = f"{GITHUB_RAW_BASE}/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{safe_path}"
+    
     try:
-        # Only send the authorization header if the token actually exists
-        headers = GITHUB_HEADERS if GITHUB_TOKEN else {}
-        resp = requests.get(url, headers=headers, timeout=15)
-        
+        resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             return resp.content
-    except Exception:
-        pass
+        else:
+            st.sidebar.error(f"GitHub Error {resp.status_code}: Could not fetch {file_path}")
+    except Exception as e:
+        st.sidebar.error(f"Connection error: {e}")
     return None
 
 @st.cache_data(show_spinner=False)
@@ -180,7 +187,7 @@ def fetch_results_log() -> list:
     """Read results_log.json from the repo. Returns [] if not found."""
     url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     try:
-        resp = requests.get(url, headers=GITHUB_HEADERS, timeout=15)
+        resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             content_b64 = resp.json().get("content", "")
             raw = base64.b64decode(content_b64).decode("utf-8")
@@ -190,27 +197,22 @@ def fetch_results_log() -> list:
     return []
 
 def push_results_log(log_entries: list) -> bool:
-    """
-    Commit the updated results_log.json back to the repo.
-    Creates the file if it doesn't exist, updates if it does.
-    Returns True on success.
-    """
+    """Commit the updated results_log.json back to the repo."""
     url     = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
     content = base64.b64encode(
         json.dumps(log_entries, indent=2, ensure_ascii=False).encode("utf-8")
     ).decode("utf-8")
 
-    # Try to get current SHA (needed for updates)
     sha = None
     try:
-        resp = requests.get(url, headers=GITHUB_HEADERS, timeout=15)
+        resp = requests.get(url, headers=get_github_headers(), timeout=15)
         if resp.status_code == 200:
             sha = resp.json().get("sha")
     except Exception:
         pass
 
     payload = {
-        "message": f"results_log: add/update entry",
+        "message": "results_log: add/update entry",
         "content": content,
         "branch":  GITHUB_BRANCH,
     }
@@ -218,17 +220,17 @@ def push_results_log(log_entries: list) -> bool:
         payload["sha"] = sha
 
     try:
-        resp = requests.put(url, headers=GITHUB_HEADERS, json=payload, timeout=20)
+        resp = requests.put(url, headers=get_github_headers(), json=payload, timeout=20)
         return resp.status_code in (200, 201)
     except Exception as e:
-        st.warning(f"Could not push log to GitHub: {e}")
+        st.sidebar.error(f"Push failed: {e}")
         return False
 
 # ─────────────────────────────────────────
-# Pre-load images from GitHub (once)
+# Pre-load images from GitHub 
 # ─────────────────────────────────────────
-left_logo_bytes  = fetch_github_image(LEFT_LOGO_PATH)   # Q4.png
-right_logo_bytes = fetch_github_image(RIGHT_LOGO_PATH)  # JM Logo.png
+left_logo_bytes  = fetch_github_image(LEFT_LOGO_PATH)   
+right_logo_bytes = fetch_github_image(RIGHT_LOGO_PATH)  
 
 # ─────────────────────────────────────────
 # Sidebar – Credentials, Settings & DB
@@ -271,7 +273,7 @@ with st.sidebar:
         )
         # Build HTML table for database preview
         rows_html = ""
-        for entry in reversed(log_entries[-20:]):   # show latest 20
+        for entry in reversed(log_entries[-20:]):   
             sentiment = entry.get("sentiment", "").lower()
             company_class = "company-positive" if sentiment == "positive" else "company-negative"
             tag_class     = "tag-positive"      if sentiment == "positive" else "tag-negative"
@@ -303,18 +305,14 @@ with st.sidebar:
     st.caption("Auto-loaded from GitHub repository")
     col_l, col_r = st.columns(2)
     with col_l:
-        if left_logo_bytes:
-            st.markdown("✅ Q4.png")
-        else:
-            st.markdown("❌ Q4.png")
+        if left_logo_bytes: st.markdown("✅ Q4.png")
+        else:               st.markdown("❌ Q4.png")
     with col_r:
-        if right_logo_bytes:
-            st.markdown("✅ JM Logo.png")
-        else:
-            st.markdown("❌ JM Logo.png")
+        if right_logo_bytes: st.markdown("✅ JM Logo.png")
+        else:                st.markdown("❌ JM Logo.png")
 
     st.markdown("---")
-    st.caption("v3.1 · JM Financial Internal Tool · Mistral AI")
+    st.caption("v3.2 · JM Financial Internal Tool · Mistral AI")
 
 # ─────────────────────────────────────────
 # Session-state init
@@ -344,7 +342,6 @@ def extract_pdf_page_as_image(pdf_bytes: bytes, page_idx: int) -> Image.Image:
         st.stop()
     page = doc[page_idx]
     pix = page.get_pixmap(dpi=200)
-    # Convert to PNG natively to avoid RGBA/RGB transparency crash
     img_bytes = pix.tobytes("png")
     return Image.open(io.BytesIO(img_bytes))
 
@@ -389,7 +386,6 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
         "messages": [{
             "role": "user",
             "content": [
-                # Pixtral/OpenAI compatible format
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pil_to_b64(img)}"}},
                 {"type": "text",      "text": prompt}
             ]
@@ -425,7 +421,7 @@ def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        "max_tokens": 1200  # Increased slightly to accommodate the detailed historical comparison
+        "max_tokens": 1200  
     }
     resp = requests.post(f"{MISTRAL_API_BASE}/chat/completions",
                          json=payload, headers=mistral_headers(api_key), timeout=90)
@@ -861,8 +857,9 @@ if extract_btn:
             else:
                 st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub (Check Token).</div>',
                             unsafe_allow_html=True)
+            
+            # Clears the DB cache so the sidebar updates instantly, but ignores the image fetcher since we removed its cache.
             fetch_results_log.clear()
-            fetch_github_image.clear()
 
 # ─────────────────────────────────────────
 # STEP 2 – Review & Edit
