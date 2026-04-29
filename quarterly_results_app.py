@@ -400,17 +400,21 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
 
 def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
     system_prompt = (
-        "You are a risk research analyst. This is the quarterly result of a company. "
-        "Search for any key matters highlighted by company in this quarter such as acquisitions, "
-        "penalty, litigations etc and give outcome in bullet form. "
-        "Further give your 2 liner view on the financial results of the company."
+        "You are a Senior Risk Research Analyst at JM Financials. This is the quarterly result of a company. "
+        "Search for any key matters highlighted by the company in this quarter such as acquisitions, "
+        "penalties, litigations, etc., and give the outcome in bullet form. "
+        "Additionally, compare these current results with the company's previous reports and historical performance "
+        "(based on your general knowledge base of the company's past financials) to identify and highlight "
+        "any specific risk remarks, deviations, or emerging negative/positive trends. "
+        "Finally, give your concise 2-liner view on the financial results."
     )
     user_prompt = (
         f"Company: {company}\n\n"
         f"Quarterly Results Document Text:\n{pdf_text[:15000]}\n\n"
-        "Please provide:\n"
-        "1. Key matters (acquisitions, penalties, litigations, one-time items, management commentary highlights) in bullet points\n"
-        "2. Your 2-line analyst view on the financial results"
+        "Please provide your analysis strictly in this structure:\n"
+        "1. Key Matters: (acquisitions, penalties, litigations, one-time items, management commentary highlights) in bullet points.\n"
+        "2. Historical Comparison & Risk Remarks: (Compare this quarter's data with the company's past reports and highlight specific risk factors).\n"
+        "3. Analyst View: (Your 2-line view on the financial results)."
     )
     payload = {
         "model": MISTRAL_TEXT_MODEL,
@@ -418,7 +422,7 @@ def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        "max_tokens": 1000
+        "max_tokens": 1200  # Increased slightly to accommodate the detailed historical comparison
     }
     resp = requests.post(f"{MISTRAL_API_BASE}/chat/completions",
                          json=payload, headers=mistral_headers(api_key), timeout=90)
