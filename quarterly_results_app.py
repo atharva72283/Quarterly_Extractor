@@ -165,11 +165,14 @@ def fetch_github_image(file_path: str) -> bytes | None:
     """Fetch a raw image from the GitHub repo. Cached so it only downloads once."""
     url = f"{GITHUB_RAW_BASE}/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{file_path}"
     try:
-        resp = requests.get(url, headers=GITHUB_HEADERS, timeout=15)
+        # Only send the authorization header if the token actually exists
+        headers = GITHUB_HEADERS if GITHUB_TOKEN else {}
+        resp = requests.get(url, headers=headers, timeout=15)
+        
         if resp.status_code == 200:
             return resp.content
-    except Exception as e:
-        st.warning(f"Could not fetch {file_path} from GitHub: {e}")
+    except Exception:
+        pass
     return None
 
 @st.cache_data(show_spinner=False)
