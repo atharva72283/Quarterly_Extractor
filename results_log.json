@@ -7,5 +7,14 @@
     "date": "29 Apr 2026",
     "pat_yoy": "-8%",
     "rev_yoy": "+13%"
+  },
+  {
+    "company": "Hindustan Zinc",
+    "revenue": "₹13,544 Cr",
+    "pat": "₹5,033 Cr",
+    "sentiment": "positive",
+    "date": "29 Apr 2026",
+    "pat_yoy": "+68%",
+    "rev_yoy": "+49%"
   }
 ]
