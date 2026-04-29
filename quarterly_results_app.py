@@ -172,6 +172,7 @@ def fetch_github_image(file_path: str) -> bytes | None:
         st.warning(f"Could not fetch {file_path} from GitHub: {e}")
     return None
 
+@st.cache_data(show_spinner=False)
 def fetch_results_log() -> list:
     """Read results_log.json from the repo. Returns [] if not found."""
     url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
