@@ -62,7 +62,8 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
 section[data-testid="stSidebar"] .stTextInput input,
-section[data-testid="stSidebar"] .stFileUploader {
+section[data-testid="stSidebar"] .stFileUploader,
+section[data-testid="stSidebar"] .stNumberInput input {
     background: #16213e !important;
     border: 1px solid #FCB316 !important;
     color: #fff !important;
@@ -97,8 +98,8 @@ div.stButton > button:hover {
     box-shadow: 0 4px 12px rgba(252,179,22,0.35);
 }
 
-.status-ok   { background:#e8f5e9; border-left:4px solid #4caf50; padding:0.6rem 1rem; border-radius:4px; font-size:0.9rem; margin:0.5rem 0; }
-.status-warn { background:#fff8e1; border-left:4px solid #FCB316;  padding:0.6rem 1rem; border-radius:4px; font-size:0.9rem; margin:0.5rem 0; }
+.status-ok   { background:#e8f5e9; border-left:4px solid #4caf50; padding:0.6rem 1rem; border-radius:4px; font-size:0.9rem; margin:0.5rem 0; color:#155724; }
+.status-warn { background:#fff8e1; border-left:4px solid #FCB316;  padding:0.6rem 1rem; border-radius:4px; font-size:0.9rem; margin:0.5rem 0; color:#856404; }
 
 .stDataEditor { border: 2px solid #FCB316; border-radius: 6px; }
 
@@ -129,7 +130,7 @@ div.stDownloadButton > button:hover { background:#FCB316; color:#1a1a2e; }
     background:#FCB316; color:#1a1a2e; font-weight:700;
     padding:6px 10px; text-align:left; border:1px solid #e0c060;
 }
-.log-table td { padding:5px 10px; border:1px solid #ddd; background:#fff; }
+.log-table td { padding:5px 10px; border:1px solid #ddd; background:#fff; color:#1a1a2e; }
 .log-table tr:nth-child(even) td { background:#fafafa; }
 .tag-positive {
     background:#d4edda; color:#155724; font-weight:700;
@@ -171,7 +172,6 @@ def fetch_github_image(file_path: str) -> bytes | None:
         st.warning(f"Could not fetch {file_path} from GitHub: {e}")
     return None
 
-
 def fetch_results_log() -> list:
     """Read results_log.json from the repo. Returns [] if not found."""
     url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{LOG_FILE_PATH}"
@@ -184,7 +184,6 @@ def fetch_results_log() -> list:
     except Exception:
         pass
     return []
-
 
 def push_results_log(log_entries: list) -> bool:
     """
@@ -221,7 +220,6 @@ def push_results_log(log_entries: list) -> bool:
         st.warning(f"Could not push log to GitHub: {e}")
         return False
 
-
 # ─────────────────────────────────────────
 # Pre-load images from GitHub (once)
 # ─────────────────────────────────────────
@@ -229,7 +227,7 @@ left_logo_bytes  = fetch_github_image(LEFT_LOGO_PATH)   # Q4.png
 right_logo_bytes = fetch_github_image(RIGHT_LOGO_PATH)  # JM Logo.png
 
 # ─────────────────────────────────────────
-# Sidebar – Credentials & Settings
+# Sidebar – Credentials, Settings & DB
 # ─────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🔑 API Configuration")
@@ -255,6 +253,46 @@ with st.sidebar:
         help="The page number (1-indexed) containing the financial table"
     )
 
+    # ── Permanent Results Log ───────────────
+    st.markdown("---")
+    st.markdown("### 📁 Results Database")
+    st.caption("Live sync with GitHub repository")
+
+    log_entries = fetch_results_log()
+
+    if log_entries:
+        st.markdown(
+            f"<small style='color:#aaa'>{len(log_entries)} entr{'y' if len(log_entries)==1 else 'ies'} recorded</small>",
+            unsafe_allow_html=True
+        )
+        # Build HTML table for database preview
+        rows_html = ""
+        for entry in reversed(log_entries[-20:]):   # show latest 20
+            sentiment = entry.get("sentiment", "").lower()
+            company_class = "company-positive" if sentiment == "positive" else "company-negative"
+            tag_class     = "tag-positive"      if sentiment == "positive" else "tag-negative"
+            tag_label     = "▲" if sentiment == "positive" else "▼"
+            rows_html += f"""
+            <tr>
+              <td class="{company_class}"><b>{entry.get('company','')}</b><br><span style="color:#888;font-size:0.7rem;font-weight:normal;">{entry.get('date','')}</span></td>
+              <td>{entry.get('revenue','–')}</td>
+              <td>{entry.get('pat','–')}</td>
+              <td style="text-align:center;"><span class="{tag_class}">{tag_label}</span></td>
+            </tr>"""
+
+        st.markdown(f"""
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Company</th><th>Revenue</th><th>PAT</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("<small style='color:#888'>No entries yet. Generate a report to start logging.</small>", unsafe_allow_html=True)
+
     # ── Logo status indicators ──────────────
     st.markdown("---")
     st.markdown("### 🖼️ Header Images")
@@ -271,49 +309,8 @@ with st.sidebar:
         else:
             st.markdown("❌ JM Logo.png")
 
-    # ── Permanent Results Log ───────────────
     st.markdown("---")
-    st.markdown("### 📁 Results Log")
-    st.caption("Stored permanently in GitHub repo")
-
-    log_entries = fetch_results_log()
-
-    if log_entries:
-        st.markdown(
-            f"<small style='color:#aaa'>{len(log_entries)} entr{'y' if len(log_entries)==1 else 'ies'} recorded</small>",
-            unsafe_allow_html=True
-        )
-        # Build HTML table
-        rows_html = ""
-        for entry in reversed(log_entries[-20:]):   # show latest 20
-            sentiment = entry.get("sentiment", "").lower()
-            company_class = "company-positive" if sentiment == "positive" else "company-negative"
-            tag_class     = "tag-positive"      if sentiment == "positive" else "tag-negative"
-            tag_label     = "▲ Positive"         if sentiment == "positive" else "▼ Negative"
-            rows_html += f"""
-            <tr>
-              <td class="{company_class}">{entry.get('company','')}</td>
-              <td>{entry.get('revenue','–')}</td>
-              <td>{entry.get('pat','–')}</td>
-              <td><span class="{tag_class}">{tag_label}</span></td>
-              <td style="color:#888;font-size:0.75rem">{entry.get('date','')}</td>
-            </tr>"""
-
-        st.markdown(f"""
-        <table class="log-table">
-          <thead>
-            <tr>
-              <th>Company</th><th>Revenue</th><th>PAT</th><th>Result</th><th>Date</th>
-            </tr>
-          </thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("<small style='color:#888'>No entries yet. Generate a report to start logging.</small>", unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.caption("v3.0 · JM Financial Internal Tool · Mistral AI")
+    st.caption("v3.1 · JM Financial Internal Tool · Mistral AI")
 
 # ─────────────────────────────────────────
 # Session-state init
@@ -342,24 +339,22 @@ def extract_pdf_page_as_image(pdf_bytes: bytes, page_idx: int) -> Image.Image:
         st.error(f"PDF only has {len(doc)} pages.")
         st.stop()
     page = doc[page_idx]
-    pix  = page.get_pixmap(dpi=200)
-    return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
+    pix = page.get_pixmap(dpi=200)
+    # FIX APPLIED: Export to PNG bytes to handle any transparency/channels properly
+    img_bytes = pix.tobytes("png")
+    return Image.open(io.BytesIO(img_bytes))
 
 def extract_pdf_full_text(pdf_bytes: bytes) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     return "\n".join(page.get_text() for page in doc)
-
 
 def pil_to_b64(img: Image.Image) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-
 def mistral_headers(key: str) -> dict:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
 
 def call_mistral_vision(api_key: str, img: Image.Image) -> str:
     prompt = """Extract the financial data from the provided image into a clean CSV format.
@@ -390,7 +385,8 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": f"data:image/png;base64,{pil_to_b64(img)}"},
+                # FIX APPLIED: Pixtral/OpenAI compatible format
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pil_to_b64(img)}"}},
                 {"type": "text",      "text": prompt}
             ]
         }],
@@ -400,7 +396,6 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
                          json=payload, headers=mistral_headers(api_key), timeout=90)
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"].strip()
-
 
 def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
     system_prompt = (
@@ -429,14 +424,8 @@ def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"].strip()
 
-
 def call_mistral_sentiment(api_key: str, pat_yoy: float, pat_qoq: float,
                             revenue_yoy: float, summary: str) -> str:
-    """
-    Ask Mistral to classify the result as 'positive' or 'negative'
-    based on financials + AI summary context.
-    Returns exactly 'positive' or 'negative'.
-    """
     prompt = (
         f"You are a financial analyst. Based on the following quarterly result data, "
         f"classify the overall result as either 'positive' or 'negative'. "
@@ -456,7 +445,6 @@ def call_mistral_sentiment(api_key: str, pat_yoy: float, pat_qoq: float,
     resp.raise_for_status()
     raw = resp.json()["choices"][0]["message"]["content"].strip().lower()
     return "positive" if "positive" in raw else "negative"
-
 
 def parse_mistral_csv(raw: str) -> pd.DataFrame:
     csv_match = re.search(r"(Particulars,.*)", raw, re.DOTALL)
@@ -480,11 +468,9 @@ def parse_mistral_csv(raw: str) -> pd.DataFrame:
     df["% Change"]= ((df["FY2026"]   - df["FY2025"])   / df["FY2025"].replace(0, np.nan)   * 100).fillna(0).round(0).astype(int)
     return df[["Particulars","Q4FY2026","Q3FY2026","Q4FY2025","QoQ%","YoY%","FY2026","FY2025","% Change"]]
 
-
 def get_row(df: pd.DataFrame, label: str) -> pd.Series:
     row = df[df["Particulars"].str.strip() == label]
     return row.iloc[0] if not row.empty else pd.Series({c: 0 for c in df.columns})
-
 
 def build_template_df(df: pd.DataFrame) -> pd.DataFrame:
     net_sales = get_row(df, "Revenue from Operations")
@@ -526,7 +512,6 @@ def build_template_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in all_cols:
         tdf[col] = mapped[col]
     return tdf
-
 
 def generate_paragraphs(df: pd.DataFrame, company: str) -> list:
     ti  = get_row(df, "Total Income")
@@ -582,7 +567,6 @@ def generate_paragraphs(df: pd.DataFrame, company: str) -> list:
          f"for FY2026 EPS stood at INR {fn(eps['FY2026'])}."),
     ]
 
-
 def build_table_image(tdf: pd.DataFrame) -> bytes:
     df_img   = tdf.copy()
     HIGHLIGHT = ["Total Income","EBIDTA","Profit before tax","Reported Profit"]
@@ -592,8 +576,7 @@ def build_table_image(tdf: pd.DataFrame) -> bytes:
         is_eps    = row_label == "EPS (Diluted)"
         is_blank  = row_label == ""
         for col in df_img.columns:
-            if col == "Particulars":
-                continue
+            if col == "Particulars": continue
             val        = tdf.loc[i, col]
             is_pct_col = col in ["QoQ%", "YoY%", "% Change"]
             is_pct_row = row_label in ["EBIDTA Margin %", "PAT %"]
@@ -632,12 +615,10 @@ def build_table_image(tdf: pd.DataFrame) -> bytes:
             cell.set_text_props(weight="bold", color="black", ha="center")
         else:
             row_label = str(df_img.iloc[row - 1, 0]).strip()
-            if col == 0:
-                cell.set_text_props(ha="left")
+            if col == 0: cell.set_text_props(ha="left")
             if row_label in HIGHLIGHT:
                 cell.set_facecolor("#EBEBEB")
-                if col == 0:
-                    cell.set_text_props(weight="bold")
+                if col == 0: cell.set_text_props(weight="bold")
         cell.set_edgecolor("black")
 
     plt.tight_layout()
@@ -646,7 +627,6 @@ def build_table_image(tdf: pd.DataFrame) -> bytes:
     plt.close()
     buf.seek(0)
     return buf.read()
-
 
 def add_para(doc, text, bold=False, font_name="Segoe UI", size=12,
              align=WD_ALIGN_PARAGRAPH.JUSTIFY):
@@ -657,7 +637,6 @@ def add_para(doc, text, bold=False, font_name="Segoe UI", size=12,
     run.font.size = Pt(size)
     run.bold      = bold
     return p
-
 
 def build_word_doc(company, paragraphs, table_png, ai_summary="",
                    left_img=None, right_img=None) -> bytes:
@@ -702,7 +681,7 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
         pgBorders.append(b)
     sectPr.append(pgBorders)
 
-    # ── Earnings paragraphs (Segoe UI 12pt) ─────────────────────────
+    # ── Earnings paragraphs ─────────────────────────
     for i, text in enumerate(paragraphs):
         add_para(doc, text, bold=(i == 0), font_name="Segoe UI", size=12)
 
@@ -713,7 +692,7 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
         tf.write(table_png); tf.flush()
         doc.add_picture(tf.name, width=Inches(7.5))
 
-    # ── AI Risk Analyst Summary (Segoe UI 12pt) ──────────────────────
+    # ── AI Risk Analyst Summary ──────────────────────
     if ai_summary and ai_summary.strip():
         doc.add_paragraph()
         h = doc.add_paragraph()
@@ -732,7 +711,6 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
     doc.save(buf)
     buf.seek(0)
     return buf.read()
-
 
 def build_excel(df: pd.DataFrame, company: str) -> bytes:
     from openpyxl import Workbook
@@ -789,7 +767,6 @@ def build_excel(df: pd.DataFrame, company: str) -> bytes:
 
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.read()
-
 
 # ─────────────────────────────────────────
 # STEP 1 – PDF Upload & Extraction
@@ -870,9 +847,7 @@ if extract_btn:
                 "rev_yoy":   f"{float(rev_row.get('YoY%', 0)):+.0f}%",
             }
 
-            # Fetch current log, append, push back
             current_log = fetch_results_log()
-            # Upsert: if same company + date exists, replace it
             current_log = [e for e in current_log
                            if not (e.get("company") == new_entry["company"]
                                    and e.get("date") == new_entry["date"])]
@@ -882,10 +857,8 @@ if extract_btn:
                 st.markdown('<div class="status-ok">✅ Data extracted & results log updated on GitHub.</div>',
                             unsafe_allow_html=True)
             else:
-                st.markdown('<div class="status-ok">✅ Data extracted successfully! '
-                            '(Log push to GitHub failed – check token permissions.)</div>',
+                st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub (Check Token).</div>',
                             unsafe_allow_html=True)
-            # Invalidate sidebar cache so it refreshes
             fetch_results_log.clear()
             fetch_github_image.clear()
 
@@ -921,8 +894,12 @@ if st.session_state.df_extracted is not None:
         pat_row = get_row(edited_df, "PAT")
         eb_row  = get_row(edited_df, "EBITDA")
         rev_row = get_row(edited_df, "Revenue from Operations")
-        eb_mg   = (eb_row["Q4FY2026"] / rev_row["Q4FY2026"] * 100) if rev_row["Q4FY2026"] else 0
-        pt_mg   = (pat_row["Q4FY2026"] / rev_row["Q4FY2026"] * 100) if rev_row["Q4FY2026"] else 0
+        
+        # FIX APPLIED: Zero Division Handlers
+        rev_val = rev_row.get("Q4FY2026", 0)
+        eb_mg   = (eb_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
+        pt_mg   = (pat_row.get("Q4FY2026", 0) / rev_val * 100) if rev_val else 0
+        
         st.markdown(f"""
         <div class="metric-row">
           <div class="metric-card"><div class="label">Revenue (Q4FY26)</div>
