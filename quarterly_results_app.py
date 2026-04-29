@@ -964,7 +964,7 @@ if st.session_state.df_extracted is not None:
         else:
             ai_summary_edited = ""
 
-        st.caption("Font: Segoe UI 12pt throughout. Header images loaded automatically.")
+        
 
         if st.button("Build Word Document", key="build_word"):
             final_paras      = [st.session_state.get(f"para_{i}", p) for i, p in enumerate(paras)]
