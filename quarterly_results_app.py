@@ -158,7 +158,6 @@ st.markdown("""
 <div class="jm-header">
     <div>
         <h1>📊 Quarterly Results Extractor</h1>
-        <p>JM Financial · Quarterly Result Extractor · AI Integrated</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -233,7 +232,7 @@ def push_results_log(log_entries: list) -> bool:
 # Sidebar – Credentials, Settings & DB
 # ─────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 🔑 API Configuration")
+    st.markdown("### 🔑 API Key")
     api_key = st.text_input(
         "Mistral API Key",
         type="password",
@@ -258,8 +257,8 @@ with st.sidebar:
 
     # ── Permanent Results Log ───────────────
     st.markdown("---")
-    st.markdown("### 📁 Results Database")
-    st.caption("Live sync with GitHub repository")
+    st.markdown("### 📁 Result Database")
+    
 
     log_entries = fetch_results_log()
 
@@ -295,20 +294,6 @@ with st.sidebar:
     else:
         st.markdown("<small style='color:#888'>No entries yet. Generate a report to start logging.</small>", unsafe_allow_html=True)
 
-    # ── Logo status indicators ──────────────
-    st.markdown("---")
-    st.markdown("### 🖼️ Header Images")
-    st.caption("Auto-loaded from GitHub repository")
-    col_l, col_r = st.columns(2)
-    with col_l:
-        if left_logo_bytes: st.markdown("✅ Q4.png")
-        else:               st.markdown("❌ Q4.png")
-    with col_r:
-        if right_logo_bytes: st.markdown("✅ JM Logo.png")
-        else:                st.markdown("❌ JM Logo.png")
-
-    st.markdown("---")
-    st.caption("v3.5 · JM Financial Internal Tool · Mistral AI")
 
 # ─────────────────────────────────────────
 # Session-state init
@@ -370,7 +355,7 @@ Extract or calculate the following rows exactly in this order:
 11. Share of Profit of Associate/JV
 12. Exceptional Items
 13. PAT                  -> (Profit After Tax / Net Profit for the period)
-14. EPS                  -> (Earnings Per Share - Basic/Diluted)
+14. EPS                  -> (Earnings Per Share - Diluted)
 
 IMPORTANT: Return ONLY the CSV block. No intro, no outro, no explanations.
 Use 0 for missing values. Clean numbers of all currency symbols and commas.
@@ -394,9 +379,9 @@ Indicate negative numbers with a minus sign (e.g., -100)."""
 
 def call_mistral_ai_summary(api_key: str, pdf_text: str, company: str) -> str:
     system_prompt = (
-        "You are a Senior Risk Research Analyst at JM Financials. This is the quarterly result of a company. "
-        "Search for any key matters highlighted by the company in this quarter such as acquisitions, "
-        "penalties, litigations, etc., and give the outcome in bullet form. "
+        "You are a Senior Risk Analyst at JM Financials. This is the quarterly result of a company. "
+        "Search for any key matters highlighted by the company in this quarterly update such as acquisitions, "
+        "penalties, litigations, etc., and give the outcome in concise para form."
         "Additionally, compare these current results with the company's previous reports and historical performance "
         "(based on your general knowledge base of the company's past financials) to identify and highlight "
         "any specific risk remarks, deviations, or emerging negative/positive trends. "
@@ -704,7 +689,7 @@ def build_word_doc(company, paragraphs, table_png, ai_summary="",
         doc.add_paragraph()
         h  = doc.add_paragraph()
         h.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        hr = h.add_run("Risk Analyst Commentary (AI-Generated)")
+        hr = h.add_run("Quarterly Update - Summary")
         hr.font.name       = "Segoe UI"
         hr.font.size       = Pt(12)
         hr.bold            = True
@@ -790,7 +775,7 @@ pdf_file = st.file_uploader(
 
 col_btn, col_status = st.columns([1, 3])
 with col_btn:
-    extract_btn = st.button("⚡ Extract with Mistral", use_container_width=True)
+    extract_btn = st.button("⚡ Extract with AI", use_container_width=True)
 
 if extract_btn:
     if not api_key:
@@ -863,10 +848,10 @@ if extract_btn:
             current_log.append(new_entry)
             push_ok = push_results_log(current_log)
             if push_ok:
-                st.markdown('<div class="status-ok">✅ Data extracted & results log updated on GitHub.</div>',
+                st.markdown('<div class="status-ok">✅ Data extracted & results log updated.</div>',
                             unsafe_allow_html=True)
             else:
-                st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log to GitHub. Check token permissions (needs repo write scope).</div>',
+                st.markdown('<div class="status-warn">⚠️ Data extracted successfully, but could not push log. Check token permissions (needs repo write scope).</div>',
                             unsafe_allow_html=True)
             
             fetch_results_log.clear()
@@ -952,7 +937,6 @@ if st.session_state.df_extracted is not None:
     tab_excel, tab_word = st.tabs(["📗  Excel Output", "📝  Word Report"])
 
     with tab_excel:
-        st.markdown("Generates a styled Excel file matching the JM Financial quarterly template.")
         if st.button("Build Excel", key="build_excel"):
             with st.spinner("Building Excel…"):
                 xl_bytes = build_excel(edited_df, company_name)
@@ -963,11 +947,7 @@ if st.session_state.df_extracted is not None:
             )
 
     with tab_word:
-        st.markdown(
-            "Generates the styled Word document with earnings commentary, "
-            "coloured table, and AI Risk Analyst Summary. "
-            "Header images are pulled automatically from GitHub."
-        )
+
 
         paras = generate_paragraphs(edited_df, company_name)
         st.markdown("**Generated Earnings Summary**")
@@ -984,7 +964,7 @@ if st.session_state.df_extracted is not None:
         else:
             ai_summary_edited = ""
 
-        st.caption("Font: Segoe UI 12pt throughout. Header images loaded from GitHub automatically.")
+        st.caption("Font: Segoe UI 12pt throughout. Header images loaded automatically.")
 
         if st.button("Build Word Document", key="build_word"):
             final_paras      = [st.session_state.get(f"para_{i}", p) for i, p in enumerate(paras)]
