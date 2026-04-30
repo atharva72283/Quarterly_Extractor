@@ -25,5 +25,14 @@
     "date": "30 Apr 2026",
     "pat_yoy": "+68%",
     "rev_yoy": "+46%"
+  },
+  {
+    "company": "Castrol India",
+    "revenue": "₹1,545 Cr",
+    "pat": "₹242 Cr",
+    "sentiment": "positive",
+    "date": "30 Apr 2026",
+    "pat_yoy": "+4%",
+    "rev_yoy": "+9%"
   }
 ]
