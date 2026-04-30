@@ -34,5 +34,14 @@
     "date": "30 Apr 2026",
     "pat_yoy": "+4%",
     "rev_yoy": "+9%"
+  },
+  {
+    "company": "REC Ltd.",
+    "revenue": "₹14,564 Cr",
+    "pat": "₹3,375 Cr",
+    "sentiment": "negative",
+    "date": "30 Apr 2026",
+    "pat_yoy": "-22%",
+    "rev_yoy": "-5%"
   }
 ]
